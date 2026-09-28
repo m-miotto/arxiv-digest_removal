@@ -627,6 +627,65 @@ def test_removing_every_paper_keeps_restore_available(monkeypatch, tmp_path):
     assert _ranked_titles(at) == ["1. Paper A"]
 
 
+def _removed_expanders(at):
+    return [x.label for x in at.expander if x.label.startswith("Removed papers")]
+
+
+def test_removed_list_only_offers_papers_that_would_be_ranked(monkeypatch, tmp_path):
+    """A removed paper that would rank below the visible top N isn't listed."""
+    import json
+
+    from streamlit.testing.v1 import AppTest
+    import arxiv_digest as ad
+
+    removed_file = _tmp_home(monkeypatch, tmp_path)
+    removed_file.parent.mkdir(parents=True)
+    removed_file.write_text(json.dumps(["p1", "p4"]))
+    at = AppTest.from_file("arxiv_gui.py")
+    cfg = ad.Config.load(None)
+    cfg.top_n = 2
+    at.session_state["cfg"] = cfg
+    at.session_state["papers"] = [_card_paper(f"p{i}", f"Paper {c}") for i, c in enumerate("ABCD", 1)]
+    at.run(timeout=15)
+
+    assert _ranked_titles(at) == ["1. Paper B", "2. Paper C"]
+    assert _removed_expanders(at) == ["Removed papers (1)"]
+    keys = {b.key for b in at.button}
+    assert "restore_p1" in keys and "restore_p4" not in keys
+    assert not list(at.exception)
+
+
+def test_yesterdays_removal_resurfaces_only_as_a_ranked_replacement(monkeypatch, tmp_path):
+    """In today's digest a paper removed yesterday is listed only if it came back
+    as a replacement (and replacements are shown) that would make the top N."""
+    import json
+
+    from streamlit.testing.v1 import AppTest
+    import arxiv_digest as ad
+
+    removed_file = _tmp_home(monkeypatch, tmp_path)
+    removed_file.parent.mkdir(parents=True)
+    removed_file.write_text(json.dumps(["2609.00009"]))
+    at = AppTest.from_file("arxiv_gui.py")
+    cfg = ad.Config.load(None)
+    cfg.top_n = 2
+    at.session_state["cfg"] = cfg
+    at.session_state["papers"] = [
+        _card_paper("2609.00001", "Paper B"),
+        _card_paper("2609.00002", "Paper C"),
+        _card_paper("2609.00009", "Paper A", "Replacement submissions (showing 1 of 1 entries)"),
+    ]
+    at.run(timeout=15)
+    assert _ranked_titles(at) == ["1. Paper B", "2. Paper C"]
+    assert _removed_expanders(at) == []
+
+    next(c for c in at.checkbox if c.label == "Include replacement submissions").set_value(True)
+    at.run(timeout=15)
+    assert _ranked_titles(at) == ["1. Paper B", "2. Paper C"]
+    assert _removed_expanders(at) == ["Removed papers (1)"]
+    assert not list(at.exception)
+
+
 def test_removal_persists_into_a_new_session_and_weekly_fetch(monkeypatch, tmp_path):
     """A paper removed from the daily ranking stays out after a reload, including
     in a pastweek fetch where the same paper sits under a day-label section."""

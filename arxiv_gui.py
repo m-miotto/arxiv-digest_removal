@@ -805,14 +805,15 @@ def _restore_papers(arxiv_ids: list[str]) -> None:
 
 
 def _render_removed_papers(removed: list[dict]) -> None:
-    """Expander listing papers removed from the current view, each restorable."""
+    """Expander listing removed papers that would otherwise be in the ranking shown."""
     if not removed:
         return
     with st.expander(f"Removed papers ({len(removed)})"):
         owner = f"profile **{loaded_profile()}**" if loaded_profile() else "no loaded profile"
         st.caption(
-            f"This list belongs to {owner}; other profiles keep their own. Removed "
-            "papers stay hidden across reloads and later fetches "
+            "Only papers that would otherwise appear in this ranking are listed. "
+            f"The removal list belongs to {owner}; other profiles keep their own. "
+            "Removed papers stay hidden across reloads and later fetches "
             f"(saved in `{removed_papers_path(loaded_profile())}`)."
         )
         for p in removed:
@@ -862,7 +863,19 @@ def render_papers_tab():
     )
     hidden = len(fetched) - len(papers)
     removed_ids = load_removed_ids(loaded_profile())
-    removed = [p for p in papers if p["id"] in removed_ids]
+    # Walk the full ranking, removed papers included: a removed paper met before
+    # the top N fills up would be showing had it not been removed, so only those
+    # are offered for restore (not, say, one removed from yesterday's digest).
+    ranked = ad.build_ranked_entries(papers, cfg(), top_n=len(papers))
+    entries: list[dict] = []
+    removed: list[dict] = []
+    for e in ranked:
+        if len(entries) == cfg().top_n:
+            break
+        if e["id"] in removed_ids:
+            removed.append(e)
+        else:
+            entries.append({**e, "rank": len(entries) + 1})
     papers = [p for p in papers if p["id"] not in removed_ids]
     _render_removed_papers(removed)
     if not papers:
@@ -872,7 +885,6 @@ def render_papers_tab():
         )
         return
 
-    entries = ad.build_ranked_entries(papers, cfg(), top_n=cfg().top_n)
     paper_by_id = {p["id"]: p for p in papers}
 
     col_search, col_export_md, col_export_json = st.columns([3, 1, 1])

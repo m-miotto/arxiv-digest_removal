@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Remove a paper from the digest.** Each paper card in the GUI has a ✕ button that drops it from the ranked list for the rest of the session. Papers below it move up one place, and the first paper past the top-N cutoff takes the freed slot. A *Removed papers* expander above the list restores them one at a time or all at once. Markdown/JSON downloads follow the list as shown.
 
+### Fixed
+- **`uv run streamlit run arxiv_gui.py` opens the browser again.** The bundled `.streamlit/config.toml` forced `server.headless = true`, so launching from a clone only printed the localhost URL. It now uses Streamlit's default (open the browser when a display is available), matching the `arxiv-gui` launcher.
+
 ## [0.6.2] - 2026-09-21
 
 ### Fixed

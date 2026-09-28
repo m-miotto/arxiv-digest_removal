@@ -565,9 +565,17 @@ def test_gui_renders_after_loading_synthetic_papers(monkeypatch):
     assert not list(at.exception)
 
 
-def _card_paper(pid, title):
+def _card_paper(pid, title, section="New submissions (showing 3 of 3 entries)"):
     return {"id": pid, "title": title, "authors": "A", "subjects": "physics.optics",
-            "abstract": "x" * 50, "link": "", "section": "New submissions (showing 3 of 3 entries)"}
+            "abstract": "x" * 50, "link": "", "section": section}
+
+
+def _tmp_home(monkeypatch, tmp_path):
+    """Point REMOVED_PAPERS_PATH at tmp_path (AppTest re-runs the module top level)."""
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    return tmp_path / ".arxiv_scraper" / "removed_papers.json"
 
 
 def _ranked_titles(at):
@@ -577,11 +585,12 @@ def _ranked_titles(at):
     return re.findall(r'class="paper-title">(.*?)</div>', blob)
 
 
-def test_remove_paper_reranks_and_promotes_next_paper():
+def test_remove_paper_reranks_and_promotes_next_paper(monkeypatch, tmp_path):
     """✕ on a card drops it, shifts the rest up, and pulls paper N+1 into the top N."""
     from streamlit.testing.v1 import AppTest
     import arxiv_digest as ad
 
+    _tmp_home(monkeypatch, tmp_path)
     at = AppTest.from_file("arxiv_gui.py")
     cfg = ad.Config.load(None)
     cfg.top_n = 2
@@ -602,9 +611,10 @@ def test_remove_paper_reranks_and_promotes_next_paper():
     assert _ranked_titles(at) == ["1. Paper A", "2. Paper B"]
 
 
-def test_removing_every_paper_keeps_restore_available():
+def test_removing_every_paper_keeps_restore_available(monkeypatch, tmp_path):
     from streamlit.testing.v1 import AppTest
 
+    _tmp_home(monkeypatch, tmp_path)
     at = AppTest.from_file("arxiv_gui.py")
     at.session_state["papers"] = [_card_paper("p1", "Paper A")]
     at.run(timeout=15)
@@ -615,6 +625,42 @@ def test_removing_every_paper_keeps_restore_available():
 
     at.button(key="restore_all").click().run(timeout=15)
     assert _ranked_titles(at) == ["1. Paper A"]
+
+
+def test_removal_persists_into_a_new_session_and_weekly_fetch(monkeypatch, tmp_path):
+    """A paper removed from the daily ranking stays out after a reload, including
+    in a pastweek fetch where the same paper sits under a day-label section."""
+    import json
+
+    from streamlit.testing.v1 import AppTest
+
+    removed_file = _tmp_home(monkeypatch, tmp_path)
+    daily = AppTest.from_file("arxiv_gui.py")
+    daily.session_state["papers"] = [_card_paper("2609.00001", "Paper A")]
+    daily.run(timeout=15)
+    daily.button(key="remove_2609.00001").click().run(timeout=15)
+    assert json.loads(removed_file.read_text()) == ["2609.00001"]
+
+    day = "Mon, 28 Sep 2026 (showing 2 of 2 entries )"
+    weekly = AppTest.from_file("arxiv_gui.py")
+    weekly.session_state["papers"] = [
+        _card_paper("2609.00001", "Paper A", day), _card_paper("2609.00002", "Paper B", day),
+    ]
+    weekly.run(timeout=15)
+    assert not list(weekly.exception)
+    assert _ranked_titles(weekly) == ["1. Paper B"]
+
+
+def test_load_removed_ids_tolerates_missing_or_corrupt_file(monkeypatch, tmp_path):
+    import arxiv_gui
+
+    path = tmp_path / "removed_papers.json"
+    monkeypatch.setattr(arxiv_gui, "REMOVED_PAPERS_PATH", path)
+    assert arxiv_gui.load_removed_ids() == set()
+    path.write_text("{not json")
+    assert arxiv_gui.load_removed_ids() == set()
+    arxiv_gui.save_removed_ids({"b", "a"})
+    assert arxiv_gui.load_removed_ids() == {"a", "b"}
 
 
 # ───────────────── Regression: keyed widgets vs cfg() state (arxiv_scraper_cli-e7b) ─────────────────

@@ -24,6 +24,7 @@ import arxiv_digest as ad
 import zotero_bridge as zb
 
 PROFILES_DIR = Path.home() / ".arxiv_scraper" / "profiles"
+REMOVED_PAPERS_PATH = Path.home() / ".arxiv_scraper" / "removed_papers.json"
 PROJECT_CONFIG = ad.DEFAULT_CONFIG_PATH
 
 
@@ -47,6 +48,29 @@ def load_profile(name: str) -> ad.Config:
 
 def delete_profile(name: str) -> None:
     (PROFILES_DIR / f"{name}.json").unlink(missing_ok=True)
+
+
+# ────────────────────────── Removed papers ──────────────────────────
+
+def load_removed_ids() -> set[str]:
+    """IDs of papers the user removed from the digest, shared by all sessions.
+
+    Kept on disk so a removal survives page reloads, app restarts, and later
+    fetches (a paper removed from a daily ranking stays out of the weekly one).
+    A missing or unreadable file means nothing has been removed.
+    """
+    try:
+        return set(json.loads(REMOVED_PAPERS_PATH.read_text()))
+    except (OSError, ValueError, TypeError):
+        return set()
+
+
+def save_removed_ids(ids: set[str]) -> None:
+    # Write-then-rename so an interrupted save never truncates the only copy.
+    REMOVED_PAPERS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = REMOVED_PAPERS_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(sorted(ids), indent=2))
+    tmp.replace(REMOVED_PAPERS_PATH)
 
 
 # ────────────────────────── Zotero bridge ──────────────────────────
@@ -292,8 +316,6 @@ def init_state():
         st.session_state.papers = []
     if "last_fetch" not in st.session_state:
         st.session_state.last_fetch = None
-    if "removed_ids" not in st.session_state:
-        st.session_state.removed_ids = set()
     if "zotero_saved_at" not in st.session_state:
         st.session_state.zotero_saved_at = {}
     if "zotero_saving" not in st.session_state:
@@ -750,16 +772,17 @@ def _render_breakdown(breakdown: dict):
 
 
 def _remove_paper(arxiv_id: str) -> None:
-    """Callback for a card's ✕ button: hide the paper for the rest of the session.
+    """Callback for a card's ✕ button: hide the paper from every later ranking.
 
     Removed papers are dropped before ranking, so every paper below moves up one
-    place and the first one past the top-N cutoff takes the freed slot.
+    place and the first one past the top-N cutoff takes the freed slot. Reads
+    the file fresh so removals made in another browser tab aren't overwritten.
     """
-    st.session_state.removed_ids.add(arxiv_id)
+    save_removed_ids(load_removed_ids() | {arxiv_id})
 
 
 def _restore_papers(arxiv_ids: list[str]) -> None:
-    st.session_state.removed_ids.difference_update(arxiv_ids)
+    save_removed_ids(load_removed_ids() - set(arxiv_ids))
 
 
 def _render_removed_papers(removed: list[dict]) -> None:
@@ -767,6 +790,10 @@ def _render_removed_papers(removed: list[dict]) -> None:
     if not removed:
         return
     with st.expander(f"Removed papers ({len(removed)})"):
+        st.caption(
+            "Removed papers stay hidden across reloads and later fetches "
+            f"(saved in `{REMOVED_PAPERS_PATH}`)."
+        )
         for p in removed:
             title_col, restore_col = st.columns([5, 1])
             title_col.write(p.get("title", "") or "(Untitled)")
@@ -813,8 +840,9 @@ def render_papers_tab():
         days=selected_days,
     )
     hidden = len(fetched) - len(papers)
-    removed = [p for p in papers if p["id"] in st.session_state.removed_ids]
-    papers = [p for p in papers if p["id"] not in st.session_state.removed_ids]
+    removed_ids = load_removed_ids()
+    removed = [p for p in papers if p["id"] in removed_ids]
+    papers = [p for p in papers if p["id"] not in removed_ids]
     _render_removed_papers(removed)
     if not papers:
         st.warning(
@@ -937,7 +965,7 @@ def render_papers_tab():
                 st.button(
                     "✕",
                     key=f"remove_{e['id']}",
-                    help="Remove from this digest; the papers below move up one place.",
+                    help="Remove from this and later rankings; the papers below move up one place.",
                     on_click=_remove_paper,
                     args=(e["id"],),
                 )

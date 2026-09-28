@@ -181,7 +181,7 @@ The GUI opens `http://localhost:8501` in your browser automatically. The first t
 
 The GUI has eight tabs, in order: **Papers**, **Score a paper**, **Keywords**, **Authors**, **Low priority**, **Feeds**, **Scoring**, **Profiles**.
 
-- **Papers**: ranked list, search box (filters by title / authors / abstract substring), MD + JSON download buttons. Per paper: rank, title, authors, section, summary, arXiv link, score badge, a **Save to Zotero** button, expandable score breakdown, expandable full abstract.
+- **Papers**: ranked list, search box (filters by title / authors / abstract substring), MD + JSON download buttons. Per paper: rank, title, authors, section, summary, arXiv link, score badge, a **Save to Zotero** button, a **✕** button to remove it from the list (the papers below move up and the next one fills the top N), expandable score breakdown, expandable full abstract.
 - **Score a paper**: paste an arXiv link or ID to see how it would score under your current config, why it did (or didn't) appear in the digest, and save it to Zotero.
 - **Keywords**: spreadsheet-style editor for `core_keywords`. Add/remove rows, click *Save core keywords*. *Reset to defaults* restores the built-in list. Each match adds the *Per-keyword bonus* (default +6) to a paper's score.
 - **Authors**: same pattern for `named_authors`. Default +6 per match. Match is case-insensitive substring on author string.

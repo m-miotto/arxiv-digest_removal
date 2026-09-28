@@ -97,7 +97,7 @@ paper**, **Keywords**, **Authors**, **Low priority**, **Feeds**, **Scoring**,
 **Profiles** (plus the sidebar with Timeframe / Top N / Feeds / fetch controls
 and the Display + Zotero status sections).
 
-- **Papers**: ranked list, search box (filters by title / authors / abstract), MD + JSON download buttons. Per paper: rank, title, authors, subjects, section, summary, arXiv link, score badge, a **Save to Zotero** button, expandable score breakdown, expandable full abstract.
+- **Papers**: ranked list, search box (filters by title / authors / abstract), MD + JSON download buttons. Per paper: rank, title, authors, subjects, section, summary, arXiv link, score badge, a **Save to Zotero** button, a **✕** button to remove it from the list (the papers below move up and the next one fills the top N), expandable score breakdown, expandable full abstract.
 - **Score a paper**: paste an arXiv link or ID to see how it would score under your current config, why it did (or didn't) appear in the digest, and save it to Zotero.
 - **Keywords**: spreadsheet-style editor for `core_keywords`. Each match adds the *Per-keyword bonus* (default +6).
 - **Authors**: same pattern for `named_authors`. Default +6 per match. Whole-word match by default (configurable in Scoring, like keywords).

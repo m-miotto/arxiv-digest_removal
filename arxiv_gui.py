@@ -292,6 +292,8 @@ def init_state():
         st.session_state.papers = []
     if "last_fetch" not in st.session_state:
         st.session_state.last_fetch = None
+    if "removed_ids" not in st.session_state:
+        st.session_state.removed_ids = set()
     if "zotero_saved_at" not in st.session_state:
         st.session_state.zotero_saved_at = {}
     if "zotero_saving" not in st.session_state:
@@ -747,6 +749,42 @@ def _render_breakdown(breakdown: dict):
         )
 
 
+def _remove_paper(arxiv_id: str) -> None:
+    """Callback for a card's ✕ button: hide the paper for the rest of the session.
+
+    Removed papers are dropped before ranking, so every paper below moves up one
+    place and the first one past the top-N cutoff takes the freed slot.
+    """
+    st.session_state.removed_ids.add(arxiv_id)
+
+
+def _restore_papers(arxiv_ids: list[str]) -> None:
+    st.session_state.removed_ids.difference_update(arxiv_ids)
+
+
+def _render_removed_papers(removed: list[dict]) -> None:
+    """Expander listing papers removed from the current view, each restorable."""
+    if not removed:
+        return
+    with st.expander(f"Removed papers ({len(removed)})"):
+        for p in removed:
+            title_col, restore_col = st.columns([5, 1])
+            title_col.write(p.get("title", "") or "(Untitled)")
+            restore_col.button(
+                "Restore",
+                key=f"restore_{p['id']}",
+                on_click=_restore_papers,
+                args=([p["id"]],),
+                width="stretch",
+            )
+        st.button(
+            "Restore all",
+            key="restore_all",
+            on_click=_restore_papers,
+            args=([p["id"] for p in removed],),
+        )
+
+
 def render_papers_tab():
     fetched = st.session_state.papers
     if not fetched:
@@ -775,8 +813,14 @@ def render_papers_tab():
         days=selected_days,
     )
     hidden = len(fetched) - len(papers)
+    removed = [p for p in papers if p["id"] in st.session_state.removed_ids]
+    papers = [p for p in papers if p["id"] not in st.session_state.removed_ids]
+    _render_removed_papers(removed)
     if not papers:
-        st.warning("No papers left after filtering. Adjust the day or replacement filter.")
+        st.warning(
+            "No papers left after filtering. Adjust the day or replacement filter"
+            + (", or restore removed papers." if removed else ".")
+        )
         return
 
     entries = ad.build_ranked_entries(papers, cfg(), top_n=cfg().top_n)
@@ -826,12 +870,14 @@ def render_papers_tab():
     )
     if hidden:
         caption += f" {hidden} hidden by replacement/day filters."
+    if removed:
+        caption += f" {len(removed)} removed by you."
     st.caption(caption)
     st.markdown(_PAPER_CSS, unsafe_allow_html=True)
 
     for e in filtered:
         with st.container(border=True):
-            head, score_col = st.columns([5, 1])
+            head, score_col, remove_col = st.columns([5, 1, 0.3])
 
             def _hl(t: str) -> str:
                 return _highlight_terms(
@@ -887,6 +933,14 @@ def render_papers_tab():
             with score_col:
                 st.metric("Score", e["score"])
                 _render_zotero_save_button(e["id"], e["title"])
+            with remove_col:
+                st.button(
+                    "✕",
+                    key=f"remove_{e['id']}",
+                    help="Remove from this digest; the papers below move up one place.",
+                    on_click=_remove_paper,
+                    args=(e["id"],),
+                )
 
             with st.expander("Why this score?"):
                 full_paper = paper_by_id.get(e["id"], {})

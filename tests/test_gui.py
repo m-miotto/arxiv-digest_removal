@@ -565,6 +565,58 @@ def test_gui_renders_after_loading_synthetic_papers(monkeypatch):
     assert not list(at.exception)
 
 
+def _card_paper(pid, title):
+    return {"id": pid, "title": title, "authors": "A", "subjects": "physics.optics",
+            "abstract": "x" * 50, "link": "", "section": "New submissions (showing 3 of 3 entries)"}
+
+
+def _ranked_titles(at):
+    import re
+
+    blob = " ".join(m.value for m in at.markdown)
+    return re.findall(r'class="paper-title">(.*?)</div>', blob)
+
+
+def test_remove_paper_reranks_and_promotes_next_paper():
+    """✕ on a card drops it, shifts the rest up, and pulls paper N+1 into the top N."""
+    from streamlit.testing.v1 import AppTest
+    import arxiv_digest as ad
+
+    at = AppTest.from_file("arxiv_gui.py")
+    cfg = ad.Config.load(None)
+    cfg.top_n = 2
+    at.session_state["cfg"] = cfg
+    # Identical scores, so ranking falls back to the alphabetical title tiebreak.
+    at.session_state["papers"] = [
+        _card_paper("p3", "Paper C"), _card_paper("p1", "Paper A"), _card_paper("p2", "Paper B"),
+    ]
+    at.run(timeout=15)
+    assert _ranked_titles(at) == ["1. Paper A", "2. Paper B"]
+
+    at.button(key="remove_p1").click().run(timeout=15)
+    assert not list(at.exception)
+    assert _ranked_titles(at) == ["1. Paper B", "2. Paper C"]
+    assert any("1 removed by you" in c.value for c in at.caption)
+
+    at.button(key="restore_p1").click().run(timeout=15)
+    assert _ranked_titles(at) == ["1. Paper A", "2. Paper B"]
+
+
+def test_removing_every_paper_keeps_restore_available():
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file("arxiv_gui.py")
+    at.session_state["papers"] = [_card_paper("p1", "Paper A")]
+    at.run(timeout=15)
+    at.button(key="remove_p1").click().run(timeout=15)
+    assert not list(at.exception)
+    assert _ranked_titles(at) == []
+    assert any("restore removed papers" in w.value for w in at.warning)
+
+    at.button(key="restore_all").click().run(timeout=15)
+    assert _ranked_titles(at) == ["1. Paper A"]
+
+
 # ───────────────── Regression: keyed widgets vs cfg() state (arxiv_scraper_cli-e7b) ─────────────────
 #
 # Streamlit ignores `value=`/`default=` once a widget has an explicit `key` and

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Remove a paper from the digest.** Each paper card in the GUI has a ✕ button that drops it from the ranked list for the rest of the session. Papers below it move up one place, and the first paper past the top-N cutoff takes the freed slot. A *Removed papers* expander above the list restores them one at a time or all at once. Markdown/JSON downloads follow the list as shown.
+
 ## [0.6.2] - 2026-09-21
 
 ### Fixed
